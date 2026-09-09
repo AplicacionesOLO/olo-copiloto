@@ -44,6 +44,6 @@ services:
       - key: CLAUDE_MODEL
         value: claude-sonnet-5
       - key: MAX_TOOL_ROUNDS
-        value: "14"
+        value: "20"
       - key: NODE_VERSION
         value: "22"
