@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>OLO · Copiloto Outbound</title>
+  </head>
+  <body>
+    <div id="login">
+      <div class="caja">
+        <h2>Copiloto Outbound OLO</h2>
+        <p>Ingresá el token de acceso del servicio para empezar.</p>
+        <input id="tokenInput" type="password" placeholder="Token de acceso" autocomplete="current-password" />
+        <div class="error" id="loginError"></div>
+        <button class="primario" id="btnEntrar" style="width: 100%">Entrar</button>
+      </div>
+    </div>
+
+    <header>
+      <div class="logo" title="OLO">
+        <svg width="46" height="18" viewBox="0 0 46 18" aria-label="OLO">
+          <rect x="1" y="1" width="16" height="16" fill="none" stroke="#000" stroke-width="1.6" />
+          <text x="22" y="14.5" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#000">L</text>
+          <rect x="29" y="1" width="16" height="16" fill="#00A885" stroke="#000" stroke-width="1.6" />
+        </svg>
+      </div>
+      <div>
+        <div class="titulo">Copiloto Outbound</div>
+        <div class="subtitulo">Consultas al modelo de expediciones en Power BI</div>
+      </div>
+      <div class="espacio"></div>
+      <button id="btnNueva">Nueva conversación</button>
+      <button id="btnDiag">Diagnóstico</button>
+    </header>
+
+    <div id="conversacion"><div class="hilo" id="hilo"></div></div>
+
+    <div id="barra">
+      <div class="compositor">
+        <textarea
+          id="entrada"
+          rows="1"
+          placeholder="Preguntá algo — por ejemplo: ¿cómo se ve la demanda de COFERSA vs mi capacidad esta semana?"
+        ></textarea>
+        <button class="primario" id="enviar">Enviar</button>
+      </div>
+      <div class="pie">
+        <span>Enter envía · Shift+Enter salta línea</span>
+        <span id="estadoPie"></span>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

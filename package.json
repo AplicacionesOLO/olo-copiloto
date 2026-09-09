@@ -1,0 +1,28 @@
+{
+  "name": "olo-copiloto-outbound",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Consultas en lenguaje natural al modelo de Power BI de expediciones de OLO",
+  "scripts": {
+    "dev": "concurrently -n vite,api -c cyan,green \"vite\" \"node --watch server/index.js\"",
+    "demo": "cross-env FAKE_LLM=1 DATA_BACKEND=simulado APP_TOKEN=demo ANTHROPIC_API_KEY=no-hace-falta npm run dev",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "test": "node server/prueba.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@azure/msal-node": "^2.16.2",
+    "compression": "^1.7.5",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "vite": "^6.0.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

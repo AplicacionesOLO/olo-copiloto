@@ -1,0 +1,86 @@
+Copiloto Outbound — servicio de consultas fuera de Claude
+Fecha: 2026-09-09
+Estado: Código construido y probado (modo simulado). Pendiente: decidir el modo de acceso a datos, desplegar en Render y configurar credenciales.
+
+Qué es
+Una aplicación web propia que replica lo que hace la sesión de Claude sobre el modelo "Reporte expediciones": se le pregunta en español, ejecuta consultas DAX de solo lectura contra el modelo semántico, y responde con datos reales. Trae integrada la metodología ya validada de este proyecto (Alisto normal vs. Crossdock en EPA, los 5 procesos de Picking evaluados en conjunto para capacidad, el ranking de alistadores en sus dos variantes de ventana de tiempo) y siempre reporta unidades y líneas.
+Stack: Vite + JavaScript en el frontend, Express en el backend, un solo servicio en Render. No almacena datos: no hay base de datos ni sesiones en el servidor; el historial de la conversación vive en el navegador y viaja en cada consulta.
+Incluye interfaz de chat y una API REST (POST /api/ask, POST /api/dax) para integrarlo con Excel, Power Automate u otro sistema. Cada respuesta muestra las consultas DAX que ejecutó, para poder auditar de dónde salió cada número.
+
+Por qué hay un backend y no solo HTML
+La API key de Anthropic no puede vivir en el frontend: todo lo que Vite compila termina en el navegador, así que cualquiera que abra la página podría leerla y gastarla. Además la API de Anthropic bloquea por diseño las llamadas hechas desde el navegador. El servidor Express existe solo para sostener la key, correr el loop de consultas y servir los archivos compilados — no agrega infraestructura ni un segundo despliegue.
+
+La restricción que define la arquitectura
+Un servicio en Render no puede ver Power BI Desktop. El motor local de Power BI Desktop solo escucha en localhost de la máquina donde corre el archivo .pbix, y no habla HTTP. De ahí que existan dos modos, seleccionables por variable de entorno:
+
+
+
+
+
+
+
+Modo A — Power BI Service
+
+Modo B — Agente local
+
+
+
+
+
+Cómo llega al dato
+
+REST API executeQueries sobre el dataset publicado, con Service Principal de Azure AD
+
+Un agente en la máquina de Ricardo ejecuta el DAX contra Power BI Desktop; se expone por túnel HTTPS (cloudflared)
+
+
+
+Disponibilidad
+
+24/7, independiente de la computadora
+
+Solo con la computadora encendida, el archivo abierto y el túnel activo
+
+
+
+Requisitos
+
+Dataset publicado en un workspace (no "Mi área de trabajo"), App Registration, permisos de tenant
+
+Windows, Python, cloudflared
+
+
+
+Trámite
+
+Requiere al administrador del tenant de Microsoft
+
+Ninguno
+
+
+
+Recomendación dada: arrancar en modo B para probarlo de inmediato y gestionar el modo A en paralelo para dejarlo estable. El agente local es la única pieza en Python (necesita ADOMD.NET, que no tiene equivalente en Node); corre solo en la máquina de Ricardo y no se despliega.
+
+Lo que hay que gestionar con TI para el modo A
+Dataset publicado en un workspace de Power BI Service (los Service Principals no pueden leer "Mi área de trabajo").
+App Registration en Azure AD con client secret → de ahí salen Tenant ID, Client ID y Client Secret.
+El Service Principal como miembro del workspace (rol Viewer alcanza).
+Dos settings de tenant habilitados en el portal de administración de Power BI:
+Allow service principals to use Power BI APIs
+Dataset Execute Queries REST API
+
+Los IDs de workspace y dataset (salen de la URL: .../groups/<WORKSPACE_ID>/datasets/<DATASET_ID>/...).
+
+Los puntos 2, 3 y 4 son trámite de una vez con quien administre Microsoft 365 / Azure en OLO.
+
+Notas de operación
+Seguridad: el servicio es de solo lectura por diseño — valida que cada consulta empiece con EVALUATE o DEFINE y rechaza cualquier palabra de escritura o administración. No puede modificar el modelo. Ninguna credencial vive en el código; todo sale de variables de entorno. Un token de acceso propio (APP_TOKEN, comparado en tiempo constante) protege el servicio: es lo único que separa la API key de internet, así que el repositorio debe ser privado. El historial que manda el navegador se valida antes de reenviarlo a la API.
+Costos: Render (el plan gratuito duerme el servicio; la primera pregunta tras dormir tarda ~30-50s) y la API de Anthropic por token — una pregunta típica con 3-4 consultas DAX ronda los 15-25 mil tokens de entrada. Conviene fijar un límite de gasto mensual en la consola de Anthropic. Las variables MAX_TOOL_ROUNDS y MAX_HISTORY_TURNS controlan el consumo.
+Mantenimiento: toda la metodología de la operación está en un solo archivo, server/prompt.js. Cuando cambie el modelo (medidas nuevas, otro proceso, otra compañía) o se corrija algo metodológico en los documentos de este proyecto, se edita ese archivo y se vuelve a desplegar.
+
+Pendientes
+Decidir el modo (A, B, o B ahora y A después).
+Crear la API key de Anthropic y el APP_TOKEN, y configurarlos como variables de entorno en Render (nunca en el código ni por chat).
+Desplegar primero con DATA_BACKEND=simulado para validar el despliegue y la interfaz antes de pelear con credenciales.
+Si se va por el modo A: iniciar el trámite con TI (lista de arriba).
+Revisar si conviene que el servicio también pueda consultar Crossdock una vez que se resuelva su lado de capacidad (hoy el prompt explica la limitación en vez de improvisar un número).

@@ -1,0 +1,49 @@
+# Blueprint de Render. Con New > Blueprint, Render crea el servicio solo y te
+# pide únicamente los secretos. Las variables marcadas sync:false NO se guardan
+# en el repositorio — se escriben a mano en el dashboard.
+services:
+  - type: web
+    name: olo-copiloto-outbound
+    runtime: node
+    plan: starter # free también funciona, pero el servicio se duerme
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # --- Obligatorias, se escriben a mano en el dashboard ---
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_TOKEN
+        sync: false
+
+      # --- Backend de datos: powerbi_service | agente_local | simulado ---
+      - key: DATA_BACKEND
+        value: agente_local
+
+      # --- Modo A: Power BI Service (Service Principal) ---
+      - key: PBI_TENANT_ID
+        sync: false
+      - key: PBI_CLIENT_ID
+        sync: false
+      - key: PBI_CLIENT_SECRET
+        sync: false
+      - key: PBI_WORKSPACE_ID
+        sync: false
+      - key: PBI_DATASET_ID
+        sync: false
+
+      # --- Modo B: agente local expuesto por túnel ---
+      - key: LOCAL_AGENT_URL
+        sync: false
+      - key: LOCAL_AGENT_TOKEN
+        sync: false
+
+      # --- Opcionales ---
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-5
+      - key: MAX_TOOL_ROUNDS
+        value: "14"
+      - key: NODE_VERSION
+        value: "22"
