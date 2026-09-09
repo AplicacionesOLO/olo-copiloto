@@ -30,6 +30,7 @@ from __future__ import annotations
 import glob
 import os
 import secrets
+import subprocess
 import sys
 from typing import Any
 
@@ -90,36 +91,143 @@ def cargar_adomd() -> None:
     _adomd_listo = True
 
 
-def descubrir_puerto() -> int:
-    """Lee el puerto del motor de Analysis Services que Power BI Desktop levantó."""
+def _leer_puerto_de_archivo(ruta: str) -> int | None:
+    """Extrae el número de puerto de un msmdsrv.port.txt (viene en UTF-16-LE)."""
+    try:
+        with open(ruta, "rb") as fh:
+            crudo = fh.read()
+    except OSError:
+        return None
+    texto = crudo.decode("utf-16-le", errors="ignore").strip().lstrip("\ufeff")
+    digitos = "".join(c for c in texto if c.isdigit())
+    if not digitos:
+        texto = crudo.decode("utf-8", errors="ignore").strip()
+        digitos = "".join(c for c in texto if c.isdigit())
+    return int(digitos) if digitos else None
+
+
+def _puerto_desde_archivos() -> int | None:
+    """Busca msmdsrv.port.txt en las ubicaciones conocidas y en el perfil del usuario.
+
+    La ruta cambia mucho según la instalación (instalador clásico vs. Microsoft
+    Store) y según la versión de Power BI. En algunas versiones de Store el archivo
+    queda directamente bajo %USERPROFILE%\\Microsoft\\Power BI Desktop Store App\\...,
+    fuera de %LOCALAPPDATA%. Por eso se buscan varias raíces y, si hace falta, se
+    recorre el perfil completo.
+    """
     local = os.getenv("LOCALAPPDATA", "")
+    perfil = os.getenv("USERPROFILE", "")
     patrones = [
+        # Instalador clásico
         os.path.join(local, "Microsoft", "Power BI Desktop",
                      "AnalysisServicesWorkspaces", "*", "Data", "msmdsrv.port.txt"),
-        os.path.join(local, "Packages", "Microsoft.MicrosoftPowerBIDesktop_8wekyb3d8bbwe",
+        # Store — variante bajo el perfil (la que usa esta instalación)
+        os.path.join(perfil, "Microsoft", "Power BI Desktop Store App",
+                     "AnalysisServicesWorkspaces", "*", "Data", "msmdsrv.port.txt"),
+        # Store — variante bajo LOCALAPPDATA\Packages
+        os.path.join(local, "Packages", "Microsoft.MicrosoftPowerBIDesktop*",
                      "LocalCache", "Local", "Microsoft", "Power BI Desktop Store App",
                      "AnalysisServicesWorkspaces", "*", "Data", "msmdsrv.port.txt"),
     ]
     archivos: list[str] = []
     for patron in patrones:
         archivos.extend(glob.glob(patron))
+
+    # Respaldo: recorrer las raíces del perfil por si el archivo está en otro lado.
     if not archivos:
-        raise RuntimeError(
-            "No hay ninguna instancia de Power BI Desktop corriendo (no encontré "
-            "msmdsrv.port.txt). Abrí el archivo .pbix y volvé a intentar."
-        )
+        raices = [
+            os.path.join(perfil, "Microsoft"),
+            os.path.join(local, "Microsoft"),
+            os.path.join(local, "Packages"),
+        ]
+        for raiz in raices:
+            if not raiz or not os.path.isdir(raiz):
+                continue
+            for dir_actual, _dirs, ficheros in os.walk(raiz):
+                if "msmdsrv.port.txt" in ficheros:
+                    archivos.append(os.path.join(dir_actual, "msmdsrv.port.txt"))
+
+    if not archivos:
+        return None
     # El más reciente es la instancia activa
     archivos.sort(key=os.path.getmtime, reverse=True)
-    with open(archivos[0], "rb") as fh:
-        crudo = fh.read()
-    texto = crudo.decode("utf-16-le", errors="ignore").strip().lstrip("\ufeff")
-    digitos = "".join(c for c in texto if c.isdigit())
-    if not digitos:
-        texto = crudo.decode("utf-8", errors="ignore").strip()
-        digitos = "".join(c for c in texto if c.isdigit())
-    if not digitos:
-        raise RuntimeError(f"No pude leer el puerto desde {archivos[0]}")
-    return int(digitos)
+    for ruta in archivos:
+        puerto = _leer_puerto_de_archivo(ruta)
+        if puerto:
+            return puerto
+    return None
+
+
+def _puerto_desde_proceso() -> int | None:
+    """Plan B: lee el puerto directamente del proceso msmdsrv (motor de Power BI).
+
+    Si el archivo .port.txt no aparece (permisos, versión, perfil distinto), el
+    motor igual está escuchando en un puerto TCP. Se detectan los PIDs de msmdsrv
+    y el puerto en escucha de cada uno con netstat, sin dependencias extra.
+    """
+    pids: set[int] = set()
+    try:
+        salida = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq msmdsrv.exe", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, timeout=15,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for linea in salida.splitlines():
+        partes = [p.strip('"') for p in linea.split('","')]
+        if len(partes) >= 2 and partes[1].isdigit():
+            pids.add(int(partes[1]))
+    if not pids:
+        return None
+
+    try:
+        netstat = subprocess.run(
+            ["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, timeout=15,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    candidatos: list[int] = []
+    for linea in netstat.splitlines():
+        campos = linea.split()
+        # Formato:  Proto  Dir.local  Dir.remota  Estado  PID
+        if len(campos) >= 5 and "LISTENING" in campos[3].upper():
+            try:
+                pid = int(campos[-1])
+            except ValueError:
+                continue
+            if pid not in pids:
+                continue
+            local_addr = campos[1]
+            if local_addr.startswith(("127.0.0.1:", "0.0.0.0:", "[::]:", "[::1]:")):
+                try:
+                    candidatos.append(int(local_addr.rsplit(":", 1)[1]))
+                except ValueError:
+                    continue
+    if not candidatos:
+        return None
+    # El puerto más alto suele ser la instancia activa más reciente
+    return max(candidatos)
+
+
+def descubrir_puerto() -> int:
+    """Devuelve el puerto del motor de Analysis Services de Power BI Desktop.
+
+    Primero intenta leer msmdsrv.port.txt (rápido y preciso). Si no aparece,
+    recurre a detectar el puerto por el proceso msmdsrv en escucha.
+    """
+    puerto = _puerto_desde_archivos()
+    if puerto:
+        return puerto
+    puerto = _puerto_desde_proceso()
+    if puerto:
+        return puerto
+    raise RuntimeError(
+        "No pude determinar el puerto del motor de Power BI. Verificá que Power BI "
+        "Desktop esté abierto CON el archivo .pbix cargado (no solo la ventana de "
+        "inicio). Si el problema sigue, corré en PowerShell:  "
+        "Get-Process msmdsrv -ErrorAction SilentlyContinue"
+    )
 
 
 def _catalogo(puerto: int) -> str:

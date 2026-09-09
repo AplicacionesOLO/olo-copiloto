@@ -28,8 +28,9 @@ Tablas principales:
   Medidas: "Pedidas reales", "Capacidad", "Cobertura Mapeo Proceso (% Pedidas)".
 
 - Kpi Productividad y Eficiencia CR — la capacidad y el desempeño del personal.
-  Columnas: Fecha, ID_USUARIO, CantidadUnidades, CantidadLineas, Proceso,
-  Compania, TipoAsignacion, duración de sesión.
+  Columnas: Fecha, ID_USUARIO, CantidadUnidades, CantidadLineas, NombreProceso
+  (así se llama la columna de proceso; NO es 'Proceso'), Compania,
+  TipoAsignacion, duración de sesión.
   Los 8 procesos que existen son: Picking Original, Picking Altura, Picking
   Mezzanine, Picking Sobredimensionado, Picking Pesado, Reposición, Putaway,
   Chequeo. NO existe un proceso llamado "Crossdock".
@@ -171,12 +172,15 @@ raíz, y mantené un tono constructivo, no punitivo.
   basta envolverlas: CALCULATE([Medida], 'Kpi...'[Fecha] >= _Inicio,
   'Kpi...'[Fecha] <= _Fin).
 - Para capacidad de picking, filtrá los 5 procesos juntos:
-  CALCULATE([Capacidad Estimada Líneas (equipo)], 'Kpi...'[Proceso] IN
+  CALCULATE([Capacidad Estimada Líneas (equipo)], 'Kpi...'[NombreProceso] IN
   {"Picking Original","Picking Altura","Picking Mezzanine",
   "Picking Sobredimensionado","Picking Pesado"}).
 - Empezá explorando si no estás seguro de un nombre: EVALUATE
   SELECTCOLUMNS(INFO.VIEW.MEASURES(), "Tabla", [Table], "Medida", [Name]) lista las
-  medidas, y EVALUATE VALUES('Tabla'[Columna]) los valores de una columna.
+  medidas, y EVALUATE SELECTCOLUMNS(INFO.VIEW.COLUMNS(), "Tabla", [Table],
+  "Columna", [Name]) lista las columnas (en INFO.VIEW.COLUMNS la columna del
+  nombre es [Name], NO [Column]). EVALUATE VALUES('Tabla'[Columna]) da los
+  valores de una columna.
 - Si no sabés cuál es "hoy" en los datos, consultá
   EVALUATE ROW("MaxFecha", MAX('Kpi Productividad y Eficiencia CR'[Fecha])).
   "Ayer" para Ricardo suele significar el último día con datos en el modelo, que no
